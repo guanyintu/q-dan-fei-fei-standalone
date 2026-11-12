@@ -8,6 +8,10 @@
 
 [下载 EXE 和完整包](https://github.com/guanyintu/q-dan-fei-fei-standalone/releases/latest) · [卫月版](https://github.com/guanyintu/q-dan-fei-fei-dalamud)
 
+[直接下载编译好的 q弹狒狒.exe](https://github.com/guanyintu/q-dan-fei-fei-standalone/raw/refs/heads/main/q弹狒狒.exe)
+
+GitHub Release 中使用中文显示名称，实际附件下载名为拼音；ZIP 内和本仓库中的主文件均为 `q弹狒狒.exe`。
+
 **卫月版会更流畅一些，已有卫月建议优先使用 [卫月版](https://github.com/guanyintu/q-dan-fei-fei-dalamud/releases/latest)。** 本独立版无需卫月和其他加载器。
 
 单文件 Windows x64 EXE，内置自己的模型模块和用户指定的 BGM。不需要卫月、其他加载器、.NET 运行时、Python 或其他应用。使用 Windows 自带 Media Foundation 播放 MP3／WAV，C++ 运行库静态链接。
