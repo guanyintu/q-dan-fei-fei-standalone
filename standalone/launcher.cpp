@@ -426,7 +426,7 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam
             dialog.lpstrFilter = L"音频 MP3 / WAV\0*.mp3;*.wav\0所有文件\0*.*\0"; dialog.lpstrFile = path; dialog.nMaxFile = 32768;
             dialog.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
             if (GetOpenFileNameW(&dialog)) { Text(Path, path); StopAudio(); PublishSettings(); SaveSettings(); }
-        } else if (id == Credits) { ShellExecuteW(window, L"open", L"https://www.bilibili.com/video/BV1hXbN6VEKV/", nullptr, nullptr, SW_SHOWNORMAL); }
+        } else if (id == Credits) { ShellExecuteW(window, L"open", L"https://www.bilibili.com/video/BV1VGYR6bECg/", nullptr, nullptr, SW_SHOWNORMAL); }
         else if (id == ApplyMusic) { StopAudio(); SaveSettings(); UpdateAudio(true); }
         else if (id == Reset) { if (shared) InterlockedIncrement(&shared->reset); }
         else if (id >= Enable && id <= Hotkeys && id != Path) { PublishSettings(); SaveSettings(); UpdateAudio(); }
@@ -462,7 +462,7 @@ int WINAPI wWinMain(HINSTANCE app, HINSTANCE, PWSTR, int show) {
         DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
         AdjustWindowRectExForDpi(&bounds, style, FALSE, 0, qbui::dpi);
         int width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
-        window = CreateWindowExW(0, cls.lpszClassName, L"q弹狒狒 独立版 0.2.2 · someboy", style,
+        window = CreateWindowExW(0, cls.lpszClassName, L"q弹狒狒 独立版 0.2.3 · someboy", style,
             work.left + (work.right - work.left - width) / 2, work.top + std::max(0L, (work.bottom - work.top - height) / 2), width, height, nullptr, nullptr, instance, nullptr);
         if (!window) throw std::wstring(L"无法创建窗口。");
         ShowWindow(window, show); UpdateWindow(window);
