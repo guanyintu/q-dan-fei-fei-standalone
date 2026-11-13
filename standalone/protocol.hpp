@@ -5,7 +5,7 @@
 
 namespace qb {
 constexpr uint32_t Magic = 0x51424E43;
-constexpr uint32_t Abi = 1;
+constexpr uint32_t Abi = 2;
 constexpr int ObjectCount = 819;
 constexpr wchar_t ReferenceVersion[] = L"2026.11.03.0000.0000";
 enum Stage : LONG { Idle, Initializing, Ready, Stopping, Stopped, Failed };
@@ -19,6 +19,7 @@ struct alignas(8) Shared {
     alignas(8) volatile LONG64 heartbeat = 0;
     volatile LONG stage = Initializing, processed = 0, tracked = 0, hooks = 0, scene = 0, resetEcho = 0;
     wchar_t error[256]{};
+    volatile LONG rotate = 0, rotationSpeed = 90;
 };
 inline LONG Read(volatile LONG& value) { return InterlockedCompareExchange(&value, 0, 0); }
 inline void Set(volatile LONG& value, LONG next) { InterlockedExchange(&value, next); }

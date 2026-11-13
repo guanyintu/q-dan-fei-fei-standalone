@@ -37,6 +37,9 @@ double seconds;
 int frameAmplitude = 400, framePeriod = 450, frameScopes = 15;
 bool frameRandom = false;
 qb::Scale frameRelative;
+qb::Quaternion frameRotation;
+qb::RotationClock rotationClock;
+bool frameRotate;
 LARGE_INTEGER frequency, epoch;
 std::atomic<int> callbacks;
 struct HookEntry { void* target = nullptr; Update original = nullptr; };
@@ -46,7 +49,7 @@ using Identity = qb::Identity;
 struct Entry {
     Identity id{}; qb::OwnedScale scale{}; uint64_t phaseKey = 0; double phaseOffset = 0;
     void *updateFunction = nullptr, *transformFunction = nullptr, *drawTypeFunction = nullptr, *modelTypeFunction = nullptr;
-    bool tracked = false; uint64_t lastFrame = 0;
+    bool tracked = false, needsNotification = false; uint64_t lastFrame = 0; qb::OwnedRotation rotation;
 };
 std::array<Entry, qb::ObjectCount> entries;
 std::array<unsigned, qb::ObjectCount> updateDepth{};
@@ -180,28 +183,42 @@ bool Validate(const Entry& entry, Identity& now) {
     }
     now = id; return true;
 }
-void WriteValidated(const Identity& now, qb::Scale value, bool immediate = true) {
+void WriteValidated(const Identity& now, qb::Scale value, bool immediate = true, const qb::Quaternion* rotation = nullptr, bool forceNotify = false) {
     if (!qb::Valid(value)) return;
-    if (At<qb::Scale>(now.draw, 0x70) == value) return;
-    At<qb::Scale>(now.draw, 0x70) = value;
+    if (rotation && !qb::ValidRotation(*rotation)) return;
+    bool same = At<qb::Scale>(now.draw, 0x70) == value && (!rotation || At<qb::Quaternion>(now.draw, 0x60) == *rotation);
+    if (same && !forceNotify) return;
+    if (!same) {
+        At<qb::Scale>(now.draw, 0x70) = value;
+        if (rotation) At<qb::Quaternion>(now.draw, 0x60) = *rotation;
+    }
     At<uint64_t>(now.draw, 0x38) |= 2;
     if (immediate) VFunction<Transforms>(now.draw, 7)(now.draw, false);
 }
 void RestoreValidated(Entry& entry, const Identity& now, bool immediate) {
-    if (!entry.scale.owned) return;
-    WriteValidated(now, entry.scale.WithoutOwn(At<qb::Scale>(now.draw, 0x70)), immediate);
+    if (!entry.scale.owned && !entry.rotation.owned && !entry.needsNotification) return;
+    auto current = entry.rotation.owned ? At<qb::Quaternion>(now.draw, 0x60) : qb::Quaternion{};
+    auto restored = entry.rotation.WithoutOwn(current);
+    auto scale = At<qb::Scale>(now.draw, 0x70); auto baseline = entry.scale.WithoutOwn(scale);
+    bool restoreRotation = entry.rotation.owned && qb::ValidRotation(current);
+    bool changed = baseline != scale || (restoreRotation && current != restored);
+    WriteValidated(now, baseline, immediate, restoreRotation ? &restored : nullptr, immediate && entry.needsNotification);
+    entry.needsNotification = !immediate && (entry.needsNotification || changed);
     entry.scale.owned = false;
+    entry.rotation.owned = false;
 }
 void Restore(Entry& entry) {
-    if (!entry.scale.owned) return;
+    if (!entry.scale.owned && !entry.rotation.owned && !entry.needsNotification) return;
     Identity now{};
     if (Validate(entry, now)) RestoreValidated(entry, now, true);
     entry.scale.owned = false;
+    entry.rotation.owned = false;
 }
 void SafeRestore(Entry& entry) {
     __try { Restore(entry); }
     __except (EXCEPTION_EXECUTE_HANDLER) {
         entry.scale.owned = false;
+        entry.rotation.owned = false;
         Fail(L"部分模型无法安全恢复，请切换区域或重新登录。");
     }
 }
@@ -209,6 +226,7 @@ void Clear() {
     active = false;
     for (auto& entry : entries) { if (entry.tracked) SafeRestore(entry); entry = {}; }
     qb::Set(shared->tracked, 0); qb::Set(shared->processed, 0); cursor = 0; frame = 0;
+    rotationClock.Reset();
 }
 bool Included(const Identity& id) {
     int scope = id.kind == 1 ? (id.index == 0 ? qb::Self : qb::Players) : id.kind == 2 ? qb::Monsters : qb::Npcs;
@@ -222,7 +240,11 @@ void ActorAfter(int index, void* actor) {
     const auto relative = frameRandom ? qb::Evaluate(seconds, frameAmplitude, framePeriod, entry.phaseOffset) : frameRelative;
     const auto value = entry.scale.Apply(current, relative);
     if (!qb::Valid(value)) { entry.scale.owned = false; return; }
-    applying = true; WriteValidated(now, value); applying = false;
+    auto rotation = frameRotate ? At<qb::Quaternion>(now.draw, 0x60) : qb::Quaternion{};
+    bool spin = frameRotate && qb::ValidRotation(rotation);
+    if (spin) rotation = entry.rotation.Apply(rotation, frameRotation);
+    applying = true; WriteValidated(now, value, true, spin ? &rotation : nullptr, entry.needsNotification); applying = false;
+    entry.needsNotification = false;
     if (entry.lastFrame != frame) { entry.lastFrame = frame; InterlockedIncrement(&shared->processed); }
 }
 template<size_t N> void __fastcall ActorDetour(void* actor) {
@@ -300,6 +322,8 @@ void Frame() {
     frameAmplitude = qb::Read(shared->amplitude); framePeriod = qb::Read(shared->period);
     frameScopes = qb::Read(shared->scopes); frameRandom = qb::Read(shared->random) != 0;
     frameRelative = qb::Evaluate(seconds, frameAmplitude, framePeriod);
+    frameRotate = qb::Read(shared->rotate) != 0;
+    frameRotation = rotationClock.Advance(seconds, qb::Read(shared->rotationSpeed), frameRotate);
     ++frame; qb::Set(shared->processed, 0);
     for (auto& entry : entries) {
         if (!entry.tracked) continue;
@@ -311,7 +335,8 @@ void Frame() {
         }
         // While running, remove our previous value before the game's own update. Marking the
         // render transform dirty is enough here; stop/unload restores still notify immediately.
-        RestoreValidated(entry, current, false); if (!Included(current)) entry = {};
+        const bool included = Included(current);
+        RestoreValidated(entry, current, !included); if (!included) entry = {};
     }
     const int budget = frame == 1 ? qb::ObjectCount : (qb::ObjectCount + 7) / 8;
     for (int n = 0; n < budget; ++n) {

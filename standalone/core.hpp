@@ -52,6 +52,47 @@ struct OwnedScale {
         baseline = WithoutOwn(current); last = Multiply(baseline, relative); owned = true; return last;
     }
 };
+struct Quaternion { float x = 0, y = 0, z = 0, w = 1; bool operator==(const Quaternion&) const = default; };
+inline bool ValidRotation(Quaternion q) {
+    auto n = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+    return std::isfinite(n) && n > .5f && n < 1.5f;
+}
+inline Quaternion Normalize(Quaternion q) {
+    auto n = std::sqrt(q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w);
+    return {q.x/n, q.y/n, q.z/n, q.w/n};
+}
+inline Quaternion Multiply(Quaternion a, Quaternion b) {
+    return {a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y,
+        a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x,
+        a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w,
+        a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z};
+}
+struct OwnedRotation {
+    Quaternion baseline{}, last{}; bool owned = false;
+    Quaternion WithoutOwn(Quaternion current) const {
+        bool same = current == last || current == Quaternion{-last.x,-last.y,-last.z,-last.w};
+        return owned && same ? baseline : current;
+    }
+    Quaternion Apply(Quaternion current, Quaternion offset) {
+        baseline = WithoutOwn(current); last = Normalize(Multiply(offset, Normalize(baseline))); owned = true; return last;
+    }
+};
+struct RotationClock {
+    double previous = 0, degrees = 0; bool active = false;
+    void Reset() { previous = degrees = 0; active = false; }
+    Quaternion Advance(double seconds, int speed, bool enabled) {
+        if (!enabled || !std::isfinite(seconds)) { Reset(); return {}; }
+        if (!active || seconds < previous) { degrees = 0; previous = seconds; active = true; }
+        speed = std::clamp(speed, -720, 720);
+        if (speed) {
+            degrees = std::fmod(degrees + std::fmod(seconds - previous, 360.0 / std::abs(speed)) * speed, 360.0);
+            if (degrees < 0) degrees += 360;
+        }
+        previous = seconds;
+        auto half = degrees * 3.14159265358979323846 / 360;
+        return {0, static_cast<float>(std::sin(half)), 0, static_cast<float>(std::cos(half))};
+    }
+};
 inline std::vector<int> Pattern(std::string_view text) {
     std::vector<int> result;
     for (size_t i = 0; i < text.size();) {

@@ -18,7 +18,7 @@ inline UINT dpi = 96;
 inline int scrollY = 0, originX = 0, badgeTone = 0;
 inline HFONT body, smallFace, title, brand;
 inline HBRUSH cardBrush;
-inline constexpr int Width = 800, Height = 928;
+inline constexpr int Width = 800, Height = 1016;
 struct ControlRect { HWND handle; int x, y, width, height; };
 inline std::vector<ControlRect> controls;
 inline int Dp(int value) { return MulDiv(value, static_cast<int>(dpi), 96); }
@@ -52,7 +52,7 @@ inline void Init(HWND window) {
     COLORREF caption = Canvas, border = Line;
     DwmSetWindowAttribute(root, 35, &caption, sizeof(caption)); DwmSetWindowAttribute(root, 34, &border, sizeof(border));
 }
-inline RECT CanvasRect(int x, int y, int width, int height) { return Rect(originX + Dp(x), Dp(y) - scrollY, Dp(width), Dp(height)); }
+inline RECT CanvasRect(int x, int y, int width, int height) { if (y >= 498) y += 88; return Rect(originX + Dp(x), Dp(y) - scrollY, Dp(width), Dp(height)); }
 inline void Layout() {
     RECT client{}; GetClientRect(root, &client);
     originX = std::max<int>(0, (client.right - Dp(Width)) / 2);
@@ -76,6 +76,8 @@ inline void PaintCanvas() {
         Rounded(dc, CanvasRect(x, y, width, height), static_cast<float>(Dp(18)), Card, Line);
     };
     card(24, 96, 752, 100); card(24, 212, 366, 270); card(406, 212, 370, 270);
+    Rounded(dc, Rect(originX + Dp(24), Dp(498) - scrollY, Dp(752), Dp(72)), static_cast<float>(Dp(18)), Card, Line);
+    Label(dc, L"正负控制方向；强度 0 可只旋转", Rect(originX + Dp(44), Dp(547) - scrollY, Dp(270), Dp(18)), smallFace, Muted);
     card(24, 498, 752, 190); card(24, 704, 752, 82); card(24, 802, 752, 106);
     Rounded(dc, CanvasRect(28, 24, 52, 52), static_cast<float>(Dp(18)), Gold);
     Label(dc, L"Q", CanvasRect(28, 22, 52, 52), brand, Text, DT_CENTER | DT_SINGLELINE | DT_VCENTER);

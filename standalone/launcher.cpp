@@ -23,7 +23,7 @@ namespace {
 constexpr UINT AudioEvent = WM_APP + 2;
 enum Control : int { Processes = 100, Refresh, Connect, Enable, Amp, Period, Random,
     ScopeSelf, ScopePlayers, ScopeNpcs, ScopeMonsters, Bgm, Muted, Volume, Path, Browse, ApplyMusic, Reset, Hotkeys,
-    Status, Error, Version, AmpText, PeriodText, VolumeText, Credits };
+    Status, Error, Version, AmpText, PeriodText, VolumeText, Credits, Rotate, RotationSpeed, RotationText };
 HWND window;
 HFONT font;
 HINSTANCE instance;
@@ -153,17 +153,20 @@ void SaveSettings() {
     save(L"Amplitude", Slider(Amp)); save(L"Period", Slider(Period)); save(L"Random", Checked(Random));
     save(L"Self", Checked(ScopeSelf)); save(L"Players", Checked(ScopePlayers)); save(L"Npcs", Checked(ScopeNpcs)); save(L"Monsters", Checked(ScopeMonsters));
     save(L"Bgm", Checked(Bgm)); save(L"Muted", Checked(Muted)); save(L"Volume", Slider(Volume)); save(L"Hotkeys", Checked(Hotkeys));
+    save(L"Rotate", Checked(Rotate)); save(L"RotationSpeed", Slider(RotationSpeed));
     auto path = Value(Path); WritePrivateProfileStringW(L"QBounce", L"AudioPath", path.c_str(), iniPath.c_str());
 }
 void PublishSettings() {
     if (!shared) return;
     qb::Set(shared->enabled, qb::MayEnable(qb::Read(shared->stage)) && Checked(Enable)); qb::Set(shared->amplitude, Slider(Amp)); qb::Set(shared->period, Slider(Period));
     qb::Set(shared->random, Checked(Random)); qb::Set(shared->hotkeys, Checked(Hotkeys));
+    qb::Set(shared->rotate, Checked(Rotate)); qb::Set(shared->rotationSpeed, Slider(RotationSpeed));
     qb::Set(shared->scopes, (Checked(ScopeSelf) ? qb::Self : 0) | (Checked(ScopePlayers) ? qb::Players : 0) |
         (Checked(ScopeNpcs) ? qb::Npcs : 0) | (Checked(ScopeMonsters) ? qb::Monsters : 0));
     qb::Set(shared->bgm, Checked(Bgm)); qb::Set(shared->muted, Checked(Muted)); qb::Set(shared->volume, Slider(Volume));
 }
 void Labels() {
+    Text(RotationText, L"旋转速度 " + std::to_wstring(Slider(RotationSpeed)) + L" 度/秒");
     wchar_t value[48]{}; swprintf_s(value, L"强度 %.2f", Slider(Amp) / 1000.0); Text(AmpText, value);
     swprintf_s(value, L"周期 %.2f 秒", Slider(Period) / 1000.0); Text(PeriodText, value);
     swprintf_s(value, L"音量 %ld%%", Slider(Volume) / 10); Text(VolumeText, value);
@@ -309,6 +312,7 @@ void Timer() {
     if (!audioError.empty()) ShowError(audioError);
 }
 HWND Add(const wchar_t* type, const wchar_t* label, DWORD style, int x, int y, int width, int height, int id = 0) {
+    if (y >= 498 && id != Rotate && id != RotationSpeed && id != RotationText) y += 88;
     auto control = CreateWindowExW(0, type, label, WS_CHILD | WS_VISIBLE | style, qbui::Dp(x), qbui::Dp(y), qbui::Dp(width), qbui::Dp(height), window,
         reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance, nullptr);
     SendMessageW(control, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
@@ -316,6 +320,10 @@ HWND Add(const wchar_t* type, const wchar_t* label, DWORD style, int x, int y, i
 }
 void CreateControls() {
     font = qbui::body;
+    Add(L"BUTTON", L"仅旋转模型", BS_AUTOCHECKBOX | WS_TABSTOP, 44, 509, 260, 34, Rotate);
+    Add(L"STATIC", L"旋转速度 90 度/秒", 0, 324, 505, 414, 22, RotationText);
+    Add(TRACKBAR_CLASSW, L"", TBS_HORZ | TBS_NOTICKS | WS_TABSTOP, 318, 531, 438, 28, RotationSpeed);
+    SendMessageW(Item(RotationSpeed), TBM_SETRANGE, TRUE, MAKELPARAM(-720, 720));
     Add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP, 44, 139, 438, 220, Processes);
     SendMessageW(Item(Processes), CB_SETITEMHEIGHT, static_cast<WPARAM>(-1), qbui::Dp(30));
     Add(L"BUTTON", L"刷新", BS_PUSHBUTTON | WS_TABSTOP, 494, 139, 84, 34, Refresh);
@@ -350,6 +358,8 @@ void CreateControls() {
     auto read = [](const wchar_t* key, int value) { return GetPrivateProfileIntW(L"QBounce", key, value, iniPath.c_str()); };
     SetSlider(Amp, std::clamp(read(L"Amplitude", 400), 0u, 600u)); SetSlider(Period, std::clamp(read(L"Period", 450), 200u, 1500u));
     SetSlider(Volume, std::clamp(read(L"Volume", 350), 0u, 1000u));
+    Check(Rotate, read(L"Rotate", 0) != 0);
+    SetSlider(RotationSpeed, std::clamp(static_cast<int>(read(L"RotationSpeed", 90)), -720, 720));
     for (auto pair : {std::pair{Random,L"Random"}, {ScopeSelf,L"Self"}, {ScopePlayers,L"Players"}, {ScopeNpcs,L"Npcs"}, {ScopeMonsters,L"Monsters"}, {Bgm,L"Bgm"}, {Muted,L"Muted"}, {Hotkeys,L"Hotkeys"}}) {
         bool defaultOn = pair.first >= ScopeSelf && pair.first <= Bgm;
         Check(pair.first, read(pair.second, defaultOn) != 0);
@@ -429,7 +439,7 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam
         } else if (id == Credits) { ShellExecuteW(window, L"open", L"https://www.bilibili.com/video/BV1VGYR6bECg/", nullptr, nullptr, SW_SHOWNORMAL); }
         else if (id == ApplyMusic) { StopAudio(); SaveSettings(); UpdateAudio(true); }
         else if (id == Reset) { if (shared) InterlockedIncrement(&shared->reset); }
-        else if (id >= Enable && id <= Hotkeys && id != Path) { PublishSettings(); SaveSettings(); UpdateAudio(); }
+        else if ((id >= Enable && id <= Hotkeys && id != Path) || id == Rotate) { PublishSettings(); SaveSettings(); UpdateAudio(); }
         return 0;
     }
     case WM_CLOSE:
@@ -462,7 +472,7 @@ int WINAPI wWinMain(HINSTANCE app, HINSTANCE, PWSTR, int show) {
         DWORD style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
         AdjustWindowRectExForDpi(&bounds, style, FALSE, 0, qbui::dpi);
         int width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
-        window = CreateWindowExW(0, cls.lpszClassName, L"q弹狒狒 独立版 0.2.3 · someboy", style,
+        window = CreateWindowExW(0, cls.lpszClassName, L"q弹狒狒 独立版 0.2.4 · someboy", style,
             work.left + (work.right - work.left - width) / 2, work.top + std::max(0L, (work.bottom - work.top - height) / 2), width, height, nullptr, nullptr, instance, nullptr);
         if (!window) throw std::wstring(L"无法创建窗口。");
         ShowWindow(window, show); UpdateWindow(window);
